@@ -2,6 +2,7 @@ import inquirer from 'inquirer'
 import twilio from 'twilio'
 import * as dotenv from 'dotenv'
 import { table } from 'table'
+import chalk from 'chalk'
 
 dotenv.config()
 
@@ -91,7 +92,6 @@ async function purchaseNumber() {
   try {
     const client = await ensureTwilioClient();
     
-    // Ask for search criteria
     const { searchType } = await inquirer.prompt([
       {
         type: 'list',
@@ -134,7 +134,6 @@ async function purchaseNumber() {
       searchParams = { country };
     }
     
-    // Ask for capabilities
     const { capabilities } = await inquirer.prompt([
       {
         type: 'checkbox',
@@ -171,36 +170,31 @@ async function purchaseNumber() {
       return;
     }
     
-    // Display available numbers
-    const data = [
-      ['Phone Number', 'Region', 'Capabilities']
-    ];
-    
-    availableNumbers.forEach((number, index) => {
+    const choices = availableNumbers.map((number, index) => {
       const capabilities = [];
       if (number.capabilities.voice) capabilities.push('Voice');
       if (number.capabilities.sms) capabilities.push('SMS');
       if (number.capabilities.mms) capabilities.push('MMS');
       
-      data.push([
-        number.phoneNumber,
-        number.region || number.locality || 'N/A',
-        capabilities.join(', ')
-      ]);
+      return {
+        name: `${chalk.green(number.phoneNumber)} | ${chalk.yellow(number.region || number.locality || 'N/A')} | ${chalk.blue(capabilities.join(', '))}`,
+        value: index
+      };
     });
     
-    console.log(table(data));
+    choices.push({ name: chalk.red('Cancel'), value: -1 });
     
-    // Ask user to select a number
+    console.log(chalk.cyan('\nAvailable Phone Numbers:'));
+    console.log(chalk.cyan('Phone Number | Region | Capabilities'));
+    console.log(chalk.cyan('------------------------------------'));
+    
     const { selectedIndex } = await inquirer.prompt([
       {
         type: 'list',
         name: 'selectedIndex',
         message: 'Select a number to purchase:',
-        choices: availableNumbers.map((number, index) => ({
-          name: `${number.phoneNumber} (${number.region || number.locality || 'N/A'})`,
-          value: index
-        })).concat([{ name: 'Cancel', value: -1 }])
+        choices: choices,
+        pageSize: Math.min(15, choices.length) // Show more options at once
       }
     ]);
     
@@ -211,7 +205,6 @@ async function purchaseNumber() {
     
     const selectedNumber = availableNumbers[selectedIndex];
     
-    // Ask for friendly name
     const { friendlyName } = await inquirer.prompt([
       {
         type: 'input',
@@ -221,12 +214,11 @@ async function purchaseNumber() {
       }
     ]);
     
-    // Confirm purchase
     const { confirmPurchase } = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirmPurchase',
-        message: `Are you sure you want to purchase ${selectedNumber.phoneNumber}?`,
+        message: `Are you sure you want to purchase ${chalk.green(selectedNumber.phoneNumber)}?`,
         default: false
       }
     ]);
@@ -236,14 +228,13 @@ async function purchaseNumber() {
       return;
     }
     
-    // Purchase the number
     console.log('Purchasing phone number...');
     const purchasedNumber = await client.incomingPhoneNumbers.create({
       phoneNumber: selectedNumber.phoneNumber,
       friendlyName
     });
     
-    console.log(`Successfully purchased ${purchasedNumber.phoneNumber}!`);
+    console.log(`${chalk.green('✓')} Successfully purchased ${chalk.bold(purchasedNumber.phoneNumber)}!`);
     console.log(`Phone Number SID: ${purchasedNumber.sid}`);
     console.log(`Friendly Name: ${purchasedNumber.friendlyName}`);
     
@@ -256,7 +247,6 @@ async function bulkPurchaseNumbers() {
   try {
     const client = await ensureTwilioClient();
     
-    // Ask for search criteria
     const { searchType } = await inquirer.prompt([
       {
         type: 'list',
@@ -299,7 +289,6 @@ async function bulkPurchaseNumbers() {
       searchParams = { country };
     }
     
-    // Ask for capabilities
     const { capabilities } = await inquirer.prompt([
       {
         type: 'checkbox',
@@ -326,7 +315,6 @@ async function bulkPurchaseNumbers() {
       searchParams.mmsEnabled = true;
     }
     
-    // Ask for quantity
     const { quantity } = await inquirer.prompt([
       {
         type: 'input',
@@ -335,7 +323,7 @@ async function bulkPurchaseNumbers() {
         default: '3',
         validate: (input: string) => {
           const num = parseInt(input, 10);
-          return (num > 0 && num <= 10) || 'Please enter a number between 1 and 10';
+          return (num > 0 && num <= 100) || 'Please enter a number between 1 and 100';
         }
       }
     ]);
@@ -343,7 +331,6 @@ async function bulkPurchaseNumbers() {
     const quantityNum = parseInt(quantity, 10);
     console.log(`Searching for ${quantityNum} available numbers...`);
     
-    // Add limit parameter to get more than needed in case user skips some
     searchParams.limit = Math.max(quantityNum * 2, 20);
     
     const availableNumbers = await client.availablePhoneNumbers(searchParams.country)
@@ -359,38 +346,31 @@ async function bulkPurchaseNumbers() {
       console.log(`Warning: Only found ${availableNumbers.length} numbers matching your criteria.`);
     }
     
-    // Display available numbers with index
-    const data = [
-      ['#', 'Phone Number', 'Region', 'Capabilities']
-    ];
+    console.log(chalk.cyan('\nAvailable Phone Numbers:'));
+    console.log(chalk.cyan('Choose up to ' + quantityNum + ' numbers from the list below:'));
+    console.log(chalk.cyan('Phone Number | Region | Capabilities'));
+    console.log(chalk.cyan('------------------------------------'));
     
-    availableNumbers.slice(0, Math.min(availableNumbers.length, quantityNum * 2)).forEach((number, index) => {
+    const choices = availableNumbers.slice(0, Math.min(availableNumbers.length, quantityNum * 2)).map((number, index) => {
       const capabilities = [];
       if (number.capabilities.voice) capabilities.push('Voice');
       if (number.capabilities.sms) capabilities.push('SMS');
       if (number.capabilities.mms) capabilities.push('MMS');
       
-      data.push([
-        (index + 1).toString(),
-        number.phoneNumber,
-        number.region || number.locality || 'N/A',
-        capabilities.join(', ')
-      ]);
+      return {
+        name: `${chalk.green(number.phoneNumber)} | ${chalk.yellow(number.region || number.locality || 'N/A')} | ${chalk.blue(capabilities.join(', '))}`,
+        value: index,
+        checked: index < quantityNum // Pre-check the first 'quantity' numbers
+      };
     });
     
-    console.log(table(data));
-    
-    // Ask user to select numbers
     const { selectedNumbers } = await inquirer.prompt([
       {
         type: 'checkbox',
         name: 'selectedNumbers',
         message: `Select up to ${quantityNum} numbers to purchase:`,
-        choices: availableNumbers.slice(0, Math.min(availableNumbers.length, quantityNum * 2)).map((number, index) => ({
-          name: `${index + 1}. ${number.phoneNumber} (${number.region || number.locality || 'N/A'})`,
-          value: index,
-          checked: index < quantityNum // Pre-check the first 'quantity' numbers
-        })),
+        choices: choices,
+        pageSize: Math.min(15, choices.length), // Show more options at once
         validate: (selected) => {
           if (selected.length === 0) return 'Please select at least one number';
           if (selected.length > quantityNum) return `Please select at most ${quantityNum} numbers`;
@@ -404,7 +384,6 @@ async function bulkPurchaseNumbers() {
       return;
     }
     
-    // Ask for friendly name prefix
     const { friendlyNamePrefix } = await inquirer.prompt([
       {
         type: 'input',
@@ -414,13 +393,16 @@ async function bulkPurchaseNumbers() {
       }
     ]);
     
-    // Confirm purchase
-    const numbersToDisplay = selectedNumbers.map((index: number) => availableNumbers[index].phoneNumber).join(', ');
+    console.log('\nSelected numbers:');
+    selectedNumbers.forEach((index: number) => {
+      console.log(chalk.green(`- ${availableNumbers[index].phoneNumber}`));
+    });
+    
     const { confirmPurchase } = await inquirer.prompt([
       {
         type: 'confirm',
         name: 'confirmPurchase',
-        message: `Are you sure you want to purchase these ${selectedNumbers.length} numbers: ${numbersToDisplay}?`,
+        message: `Are you sure you want to purchase these ${selectedNumbers.length} numbers?`,
         default: false
       }
     ]);
@@ -430,7 +412,6 @@ async function bulkPurchaseNumbers() {
       return;
     }
     
-    // Purchase the numbers
     console.log('Purchasing phone numbers...');
     
     const results: PurchaseResult[] = [];
@@ -440,7 +421,7 @@ async function bulkPurchaseNumbers() {
       const friendlyName = `${friendlyNamePrefix} ${i + 1}`;
       
       try {
-        console.log(`Purchasing ${number.phoneNumber}...`);
+        console.log(`Purchasing ${chalk.green(number.phoneNumber)}...`);
         const purchasedNumber = await client.incomingPhoneNumbers.create({
           phoneNumber: number.phoneNumber,
           friendlyName
@@ -453,10 +434,10 @@ async function bulkPurchaseNumbers() {
           friendlyName: purchasedNumber.friendlyName || ''
         });
         
-        console.log(`Successfully purchased ${purchasedNumber.phoneNumber}`);
+        console.log(`${chalk.green('✓')} Successfully purchased ${chalk.bold(purchasedNumber.phoneNumber)}`);
       } catch (err) {
         const error = err as Error;
-        console.error(`Failed to purchase ${number.phoneNumber}: ${error.message || 'Unknown error'}`);
+        console.error(`${chalk.red('✗')} Failed to purchase ${number.phoneNumber}: ${error.message || 'Unknown error'}`);
         results.push({
           success: false,
           phoneNumber: number.phoneNumber,
@@ -465,10 +446,9 @@ async function bulkPurchaseNumbers() {
       }
     }
     
-    // Display summary
     console.log('\nPurchase Summary:');
     const successCount = results.filter(r => r.success).length;
-    console.log(`Successfully purchased ${successCount} out of ${selectedNumbers.length} numbers`);
+    console.log(`Successfully purchased ${chalk.green(successCount)} out of ${selectedNumbers.length} numbers`);
     
     if (successCount > 0) {
       console.log('\nSuccessfully purchased numbers:');
@@ -490,7 +470,7 @@ async function bulkPurchaseNumbers() {
     if (successCount < selectedNumbers.length) {
       console.log('\nFailed purchases:');
       results.filter((r): r is PurchaseFailure => !r.success).forEach(result => {
-        console.log(`- ${result.phoneNumber}: ${result.error}`);
+        console.log(`${chalk.red('-')} ${result.phoneNumber}: ${result.error}`);
       });
     }
     
@@ -504,7 +484,7 @@ async function bulkPurchaseNumbers() {
 }
 
 async function showMainMenu() {
-  console.log('\n🔹 Twilio Tools 🔹\n');
+  console.log('\n' + chalk.bold.cyan('🔹 Twilio Tools 🔹') + '\n');
 
   let exitProgram = false
 
@@ -534,7 +514,7 @@ async function showMainMenu() {
         await bulkPurchaseNumbers();
         break;
       case 'exit':
-        console.log('Goodbye!')
+        console.log(chalk.yellow('Goodbye!'))
         exitProgram = true
         break
     }
